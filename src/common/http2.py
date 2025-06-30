@@ -33,6 +33,10 @@ class HTTP2Server:
         config = H2Configuration(client_side=False)
         conn = H2Connection(config=config)
         conn.initiate_connection()
+        from h2.settings import SettingCodes
+        conn.update_settings({
+            SettingCodes.MAX_CONCURRENT_STREAMS: 1000  # hoặc giá trị mong muốn
+        })
         writer.write(conn.data_to_send())
 
         request_data = {}
