@@ -1,9 +1,9 @@
-import json
+import orjson as json
 import asyncio
 import uuid
-from pymongo import MongoClient
+from motor.motor_asyncio import AsyncIOMotorClient
 from src.common.http2 import HTTP2Server
-from src.common.worker_pool import WorkerPool
+from src.common.worker_pool_improved import Worker_pool_improved
 from src.common.models import CreateSessionRequest, PDUSession, N1N2MessageTransfer
 
 
@@ -50,9 +50,9 @@ class SMFServer:
         self.port = port
         self.cert_file = cert_file
         self.key_file = key_file
-        self.db_client = MongoClient(db_uri)
+        self.db_client = AsyncIOMotorClient(db_uri)
         self.db = self.db_client.smfdb
-        self.worker_pool = WorkerPool(num_workers=10)
+        self.worker_pool = Worker_pool_improved(num_workers=32, max_queue_size=1500)
         self.udm_client = UDMClient("localhost", 8083)
         self.upf_client = UPFClient("localhost", 8084)
         self.amf_client = AMFClient("localhost", 8081)
@@ -76,9 +76,12 @@ class SMFServer:
             # Gửi vào worker pool để xử lý bất đồng bộ
             await self.worker_pool.submit(self.process_create_session, req)
 
-            return json.dumps({"status": "processing"}).encode('utf-8')
+            return json.dumps({
+                "status": "accepted",
+                "message": "Processing in background"
+            })
 
-        return json.dumps({"error": "Not found"}).encode('utf-8')
+        return json.dumps({"error": "Not found"})
 
     async def process_create_session(self, req: CreateSessionRequest):
         # Step 1: Xác thực IMSI với UDM
@@ -111,6 +114,6 @@ class SMFServer:
         await self.amf_client.send_n1n2_message_transfer(req.supi, n1n2_msg)
 
     async def store_session(self, session: PDUSession):
-        # Lưu phiên trong MongoDB
-        self.db.pdu_sessions.insert_one(session.dict())
-        print(f"Session stored in database: {session.dict()}")
+        # Lưu phiên trong MongoDB bất đồng bộ
+        result = await self.db.pdu_sessions.insert_one(session.dict())
+        print(f"Session stored in database (id={result.inserted_id}): {session.dict()}")
