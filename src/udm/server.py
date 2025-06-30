@@ -1,4 +1,4 @@
-import json
+import orjson as json
 import asyncio
 from pymongo import MongoClient
 from src.common.http2 import HTTP2Server
